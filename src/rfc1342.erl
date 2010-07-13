@@ -19,7 +19,8 @@
 -module(rfc1342).
 -created('12.07.2010').
 -created_by('jacek.zlydach@erlang-solutions.com').
--export([convert_to_ucs_encoding/1]).
+%-export([convert_to_ucs_encoding/1]).
+-compile(export_all).
 
 %%----------------------------------------------------------------------
 %% Public interface
@@ -164,13 +165,14 @@ convert_decoded_string_to_ucs(Charset, Text) ->
 decode_qstring(Text) ->
     decode_qstring_tail(Text, []).
 
-decode_qstring_tail([], Acc) -> Acc;
+decode_qstring_tail([], Acc) ->
+    lists:reverse(Acc);
 decode_qstring_tail([$\=, Hi, Lo | Rest], Acc) ->
-    decode_qstring_tail(Rest, Acc ++ [hex_chars_2_dec(Hi, Lo)]);
+    decode_qstring_tail(Rest, [hex_chars_2_dec(Hi, Lo) | Acc]);
 decode_qstring_tail([H | Rest], Acc) when H == $_ ->
-    decode_qstring_tail(Rest, Acc ++ [16#20]);
+    decode_qstring_tail(Rest, [16#20 | Acc]);
 decode_qstring_tail([H | Rest], Acc) ->
-    decode_qstring_tail(Rest, Acc ++ [H]).
+    decode_qstring_tail(Rest, [H | Acc]).
 
 %%----------------------------------------------------------------------
 %% Function: hex_chars_2_dec/2
@@ -200,8 +202,8 @@ binary_to_4byte_list(Binary) ->
     binary_to_4byte_list_tail(Binary, []).
 
 binary_to_4byte_list_tail(<<>>, Acu) ->
-    Acu;
+    lists:reverse(Acu);
 binary_to_4byte_list_tail(<<Number:32, Rest/binary>>, Acu) ->
-    binary_to_4byte_list_tail(Rest, Acu ++ [Number]);
+    binary_to_4byte_list_tail(Rest, [Number | Acu]);
 binary_to_4byte_list_tail(<<_Rest/binary>>, _Acu) ->
     {error, 'Binary not aligned to 4 bytes'}.
