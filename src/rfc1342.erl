@@ -42,7 +42,7 @@ convert_to_ucs_encoding(BinaryString) ->
 %%           {charset, encoding, string to convert}.
 %%----------------------------------------------------------------------
 split_string_to_conversion_segments(Binary) ->
-    split_string_to_conv_segments_tail(Binary, [[]]).
+     split_string_to_conv_segments_tail(Binary, [[]]).
 
 split_string_to_conv_segments_tail(<<>>, Acc) ->
     lists:reverse(Acc);
