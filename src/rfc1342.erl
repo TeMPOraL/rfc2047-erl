@@ -19,8 +19,10 @@
 -module(rfc1342).
 -created('12.07.2010').
 -created_by('jacek.zlydach@erlang-solutions.com').
-%-export([convert_to_ucs_encoding/1]).
--compile(export_all).
+-export([convert_to_ucs_encoding/1]).
+
+%% Unit testing
+-include_lib("eunit/include/eunit.hrl").
 
 %%----------------------------------------------------------------------
 %% Public interface
@@ -35,11 +37,12 @@ convert_to_ucs_encoding(BinaryString) ->
 
 %%----------------------------------------------------------------------
 %% Function: split_string_to_conversion_segments/1
-%% Purpose:  Splits binary ASCII-7 - encoded string to segments that will
-%%           or won't need conversions from RFC1342 encoding to UCS.
+%% Purpose:  Splits binary ASCII-7 - encoded string to segments that
+%%           will or won't need conversions from RFC1342 encoding to
+%%           UCS.
 %% Args:     Binary - a binary ASCII-7 string.
-%% Returns:  A list of numbers (UCS Code Points) or optionally tuples
-%%           {charset, encoding, string to convert}.
+%% Returns:  A list of already UCS-encoded strings and tuples
+%%           {charset, encoding, string to convert} needing conversion.
 %%----------------------------------------------------------------------
 split_string_to_conversion_segments(Binary) ->
      split_string_to_conv_segments_tail(Binary, [[]]).
@@ -99,6 +102,10 @@ isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
 isolate_next_convertable_substring_tail(<<Char1, Char2, Rest/binary>>, Result, _Count)
   when Char1 == $?, Char2 == $= ->
     {Result, Rest};
+
+isolate_next_convertable_substring_tail(<<Char1, _Rest/binary>>, _Result, _Count)
+  when Char1 == $? ->
+    not_found;
 
 isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
 					{FirstPart, SecondPart, Str},
@@ -184,6 +191,8 @@ decode_qstring_tail([H | Rest], Acc) ->
 hex_chars_2_dec(Hi, Lo) ->
     16*hex_digit_2_dec(Hi) + hex_digit_2_dec(Lo).
 
+hex_digit_2_dec(Digit) when Digit >= $a ->
+    (Digit - $a) + 10;
 hex_digit_2_dec(Digit) when Digit >= $A ->
     (Digit - $A) + 10;
 hex_digit_2_dec(Digit) when Digit >= $0 ->
@@ -207,3 +216,35 @@ binary_to_4byte_list_tail(<<Number:32, Rest/binary>>, Acu) ->
     binary_to_4byte_list_tail(Rest, [Number | Acu]);
 binary_to_4byte_list_tail(<<_Rest/binary>>, _Acu) ->
     {error, 'Binary not aligned to 4 bytes'}.
+
+
+%%----------------------------------------------------------------------
+%% Unit tests
+%% HIC SUNT DRACONES
+%%----------------------------------------------------------------------
+split_string_to_conversion_segments_test() ->
+    ?assert(length(split_string_to_conversion_segments(<<"Now =?ISO-8859-1?Q?I am become Death?=,? ? ? the destroyer of =?ISO-8859-1?Q?worlds?=.">>)) == 5),
+    %% RFC1342 says that a valid encoded word may contain only four question marks (including delimiters).
+    ?assert(length(split_string_to_conversion_segments(<<"=?CODING?= ??? ?=HORROR">>)) == 1),
+    %% RFC1342 limits the length of an encoded word to 75 characters (including encoding anc charset).
+    ?assert(length(split_string_to_conversion_segments(<<"=?ISO-8859-1?Q?Any_sufficiently_complicated_C_or_Fortran_program_contains_an_ad_hoc,_informally-specified,_bug-ridden,_slow_implementation_of_half_of_Common_Lisp.?=_-_Greenspun's_Tenth_Rule_of_Programming">>)) == 1).
+
+%% TODO write tests imposing limits of 75 characters per encoded word, space separation, no invalid characters inside encoded words, ect.
+
+decode_qstring_test() ->
+    "Now I am become Death, the destroyer of worlds." = 
+	decode_qstring("Now=20I=20am_become_=44eath,_the destroyer of=20worlds.").
+hex_chars_2_dec_test() ->
+    ok. %% TODO
+hex_digit_2_dec_test() ->
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] =
+	lists:map(fun hex_digit_2_dec/1,
+		  [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $A, $B, $C, $D, $E, $F]),
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] =
+	lists:map(fun hex_digit_2_dec/1,
+		  [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $a, $b, $c, $d, $e, $f]).
+%% NOTE - are lowercase hex letters allowed?
+
+binary_to_4byte_list_test() ->
+    {error, 'Binary not aligned to 4 bytes'} = binary_to_4byte_list(<<1>>),
+    {error, 'Binary not aligned to 4 bytes'} = binary_to_4byte_list(<<1,2,3,4,5>>).
