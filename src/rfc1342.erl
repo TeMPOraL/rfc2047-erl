@@ -8,9 +8,16 @@
 %%%---------------------------------------------------------------------
 %%% Exports
 %%%---------------------------------------------------------------------
-%%% convert_to_ucs_encoding(BinaryString)
+%%% decode(Encoded)
 %%%   Returns a list of UCS-4 Code Points, with each number representing
-%%%   a single code point. BinaryString should be a binary representing
+%%%   a single code point. Encoded should be a binary representing
+%%%   text data following rules described in RFC1342. This function will
+%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
+%%%   into single UCS-4 representation.
+%%%---------------------------------------------------------------------
+%%% decode2iolist(Encoded)
+%%%   Returns an iolist of UCS-4 Code Points, with each number representing
+%%%   a single code point. Encoded should be a binary representing
 %%%   text data following rules described in RFC1342. This function will
 %%%   decode Q-encoded and BCD-encoded strings and unify all charsets
 %%%   into single UCS-4 representation.
@@ -19,7 +26,7 @@
 -module(rfc1342).
 -created('12.07.2010').
 -created_by('jacek.zlydach@erlang-solutions.com').
--export([convert_to_ucs_encoding/1]).
+-export([decode/1, decode2iolist/1]).
 
 %% Unit testing
 -include_lib("eunit/include/eunit.hrl").
@@ -27,9 +34,14 @@
 %%----------------------------------------------------------------------
 %% Public interface
 %%----------------------------------------------------------------------
-convert_to_ucs_encoding(BinaryString) ->
-    lists:flatten(lists:map(fun convert_string_part_to_ucs/1,
-			    split_string_to_conversion_segments(BinaryString))).
+-spec(decode/1 :: (binary()) -> string()).
+decode(Encoded) ->
+    lists:flatten(decode2iolist(Encoded)).
+
+-spec(decode2iolist/1 :: (binary()) -> iolist()).
+decode2iolist(Encoded) ->
+    lists:map(fun convert_string_part_to_ucs/1,
+                split_string_to_conversion_segments(Encoded)).
 
 %%----------------------------------------------------------------------
 %% Private implementation
