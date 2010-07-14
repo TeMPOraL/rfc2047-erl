@@ -1,6 +1,8 @@
 %%% Unit tests for public interface of rfc1342.erl
 %%% @author Jacek Zlydach <jacek.zlydach@erlang-solutions.com>
 %%% @hidden
+%%%
+
 -module(rfc1342_tests).
 -import(rfc1342, [split_string_to_conversion_segments/1,
 		  decode_qstring/1,
@@ -18,21 +20,39 @@
 %% Unit tests :: Public interface
 %%----------------------------------------------------------------------
 basic_test_() ->
-    [?_assert(rfc1342:decode(<<"You live and learn. At any rate, you live.">>) == "You live and learn. At any rate, you live."),
-     ?_assert(rfc1342:decode(<<"It is a mistake to think =?ISO-8859-1?Q?you_can_solve_any_major_problems?= just with potatoes.">>) == "It is a mistake to think you can solve any major problems just with potatoes.")].
+    [{"Identity transformation - nothing should happen",
+      ?_assert(rfc1342:decode(<<"You live and learn. At any rate, you live.">>) == "You live and learn. At any rate, you live.")},
+     {"Q decoding.",
+      ?_assert(rfc1342:decode(<<"It is a mistake to think =?ISO-8859-1?Q?you_can_solve_any_major_problems?= just with potatoes.">>) == "It is a mistake to think you can solve any major problems just with potatoes.")},
+     {"B (BASE64) decoding.",
+      ?_assert(rfc1342:decode(<<"=?ISO-8859-1?B?Tm90aGluZyBzaG9ja3MgbWUuIEknbSBhIHNjaWVudGlzdC4=?=">>) == "Nothing shocks me. I'm a scientist.")}].
 
 invalid_character_test_() ->
     [{"RFC1342 forbids SPACE chars in encoded words",
-      ?_assert(rfc1342:decode(<<"Humans are not proud =?ISO-8859-1?Q?of their ancestors, and rarely invite them round?= to dinner.">>) == "Humans are not proud =?ISO-8859-1?Q?of their ancestors, and rarely invite them round?= to dinner.")}].
+      ?_assert(rfc1342:decode(<<"Humans are not proud =?ISO-8859-1?Q?of their ancestors, and rarely invite them round?= to dinner.">>) == "Humans are not proud =?ISO-8859-1?Q?of their ancestors, and rarely invite them round?= to dinner.")},
+     {"In Q-encoding, = are allowed only when they are used to form a hexadecimal "
+      "representation of a character.",
+     ?_assert(rfc1342:decode(<<"=?ISO-8859-1?Q?Who w=atches the watchers=3F?=">>) == "=?ISO-8859-1?Q?Who w=atches the watchers=3F?=")}].
 
-encoded_word_concatenation_test_() ->
+character_conversion_in_q_encoding_test_() ->
+    [{"=XX sequence should be converted to a character with 0xXX ASCII code, if "
+      "XX form a valid hexadecimal number.",
+      ?_assert(rfc1342:decode(<<"=?ISO-8859-1?Q?=48=41=43=4b=20=54=48=45=20=50=4C=41=4e=45=54?=">>) == "HACK THE PLANET")}].
+
+space_and_newline_handling_test_() ->
     [{"A single space after an encoded word should be discarded.",
       ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?= =?ISO-8859-1?Q?ay_as_one minute?=  ago.">>) == "Nothing is as far away as one minute ago.")},
      {"A single newline after an encoded word should be discarded.",
-      ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=\r\n=?ISO-8859-1?Q?ay_as_one_minute?=  ago.">>) == "Nothing is as far away as one minute ago.")}].
+      ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=\r\n=?ISO-8859-1?Q?ay_as_one_minute?=  ago.">>) == "Nothing is as far away as one minute ago.")},
+     {"A single space at the end of the encoded word should always be discarded",
+      ?_assert(rfc1342:decode(<<"Humanity is acquiring all the right technology for =?ISO-8859-1?Q?all_the_wrong_reasons.?= ">>) == "Humanity is acquiring all the right technology for all the wrong reasons.")},
+     {"A single newline at the end of the encoded word should be discarded unless"
+      "the word is the last token in the text.",
+      [?_assert(rfc1342:decode(<<"Humanity is acquiring all the right technology for =?ISO-8859-1?Q?all_the_wrong?=\r\n reasons.">>) == "Humanity is acquiring all the right technology for all the wrong reasons."),
+       ?_assert(rfc1342:decode(<<"Humanity is acquiring all the right technology for =?ISO-8859-1?Q?all the wrong reasons.?=\r\n">>) == "Humanity is acquiring all the right technology for all the wrong reasons.\r\n")]}].
 
 encoded_chars_test_() ->
-    [{"In Quoted-Printable representation, _ is always converted to 0x20, regardless "
+    [{"In Q-encoded representation, _ is always converted to 0x20, regardless "
       "of used charset.",
       [?_assert(rfc1342:decode(<<"=?ISO-8859-1?Q?_?=">>) == rfc1342:decode(<<"=?ISO-8859-1?Q?=20?=">>)),
        ?_assert(rfc1342:decode(<<"=?ISO-8859-2?Q?_?=">>) == rfc1342:decode(<<"=?ISO-8859-2?Q?=20?=">>)),
@@ -71,3 +91,9 @@ hex_digit_2_dec_test() ->
 binary_to_4byte_list_test() ->
     {error, 'Binary not aligned to 4 bytes'} = binary_to_4byte_list(<<1>>),
     {error, 'Binary not aligned to 4 bytes'} = binary_to_4byte_list(<<1,2,3,4,5>>).
+
+%%% People quoted in unit tests:
+%%% - Douglas Adams
+%%% - J. Robert Oppenheimer
+%%% - Jim Bishop
+%%% - Harrison Ford (as Indiana Jones)
