@@ -39,8 +39,17 @@
 -created_by('jacek.zlydach@erlang-solutions.com').
 -export([decode/1, decode2iolist/1]).
 
+%% Constants
+-define(RFC1342_MAX_CODESTRING_LENGTH, 73).
+
 %% Unit testing
--include_lib("eunit/include/eunit.hrl").
+%% For unit testing in the shell you may want to compile this module with:
+%%   c(rfc1342, [{d, 'TEST'}])
+%% to introduce TEST macro and export all functions, so that
+%% they are visible to rfc1342_tests module.
+-ifdef(TEST).
+-compile(export_all).
+-endif.
 
 %%----------------------------------------------------------------------
 %% Public interface
@@ -118,7 +127,7 @@ isolate_next_convertable_substring(BinaryString) ->
 					    {[], undefined, undefined},
 					    0).
 %% Limit of 75 chars enforced by RFC 1342 (including initial =? delimiter)
-isolate_next_convertable_substring_tail(_, _, 73) -> not_found;
+isolate_next_convertable_substring_tail(_, _, ?RFC1342_MAX_CODESTRING_LENGTH) -> not_found;
 isolate_next_convertable_substring_tail(<<>>, _, _) -> not_found;
 %% Process first part
 isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
@@ -140,9 +149,11 @@ isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
 					Count) ->
     isolate_next_convertable_substring_tail(Rest, {PrevPart, Str ++ [Char], undefined}, Count + 1);
 
-%%FIXME handle Count < 71 (or sth like that) condition to drop out invalid entries
-isolate_next_convertable_substring_tail(<<Char1, Char2, Rest/binary>>, Result, _Count)
-  when Char1 == $?, Char2 == $= ->
+isolate_next_convertable_substring_tail(<<Char1, Char2, Rest/binary>>, Result, Count)
+  when Char1 == $?,
+       Char2 == $=,
+       Count =< (?RFC1342_MAX_CODESTRING_LENGTH-2) % <- 2 is because we capture 2 chars
+       ->
     {Result, Rest};
 
 isolate_next_convertable_substring_tail(<<Char1, _Rest/binary>>, _Result, _Count)
@@ -259,34 +270,3 @@ binary_to_4byte_list_tail(<<Number:32, Rest/binary>>, Acu) ->
 binary_to_4byte_list_tail(<<_Rest/binary>>, _Acu) ->
     {error, 'Binary not aligned to 4 bytes'}.
 
-
-%%----------------------------------------------------------------------
-%% Unit tests
-%% HIC SUNT DRACONES
-%%----------------------------------------------------------------------
-split_string_to_conversion_segments_test() ->
-    ?assert(length(split_string_to_conversion_segments(<<"Now =?ISO-8859-1?Q?I am become Death?=,? ? ? the destroyer of =?ISO-8859-1?Q?worlds?=.">>)) == 5),
-    %% RFC1342 says that a valid encoded word may contain only four question marks (including delimiters).
-    ?assert(length(split_string_to_conversion_segments(<<"=?CODING?= ??? ?=HORROR">>)) == 1),
-    %% RFC1342 limits the length of an encoded word to 75 characters (including encoding anc charset).
-    ?assert(length(split_string_to_conversion_segments(<<"=?ISO-8859-1?Q?Any_sufficiently_complicated_C_or_Fortran_program_contains_an_ad_hoc,_informally-specified,_bug-ridden,_slow_implementation_of_half_of_Common_Lisp.?=_-_Greenspun's_Tenth_Rule_of_Programming">>)) == 1).
-
-%% TODO write tests imposing limits of 75 characters per encoded word, space separation, no invalid characters inside encoded words, ect.
-
-decode_qstring_test() ->
-    "Now I am become Death, the destroyer of worlds." = 
-	decode_qstring("Now=20I=20am_become_=44eath,_the destroyer of=20worlds.").
-hex_chars_2_dec_test() ->
-    ok. %% TODO
-hex_digit_2_dec_test() ->
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] =
-	lists:map(fun hex_digit_2_dec/1,
-		  [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $A, $B, $C, $D, $E, $F]),
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] =
-	lists:map(fun hex_digit_2_dec/1,
-		  [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $a, $b, $c, $d, $e, $f]).
-%% NOTE - are lowercase hex letters allowed?
-
-binary_to_4byte_list_test() ->
-    {error, 'Binary not aligned to 4 bytes'} = binary_to_4byte_list(<<1>>),
-    {error, 'Binary not aligned to 4 bytes'} = binary_to_4byte_list(<<1,2,3,4,5>>).
