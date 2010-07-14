@@ -1,26 +1,37 @@
 %%%---------------------------------------------------------------------
-%%% Description of module ucs_encode
+%%% RFC1342 Decoder
+%%% @author Jacek Zlydach <jacek.zlydach@erlang-solutions.com>
+%%% @todo Krzysiek - sign yourself here :)
 %%%---------------------------------------------------------------------
+%%% @doc 
+%%% RFC1342 Decoder - a simple tool to decode strings conforming to
+%%% RFC1342 that can be found in e-mail headers.
+%%%
+%%% The <em>primary goal is to make this library interpret strings as close
+%%% to the way RFC1342 describes it as possible</em> - including those tricky
+%%% edge cases. Therefore, unless otherwise noted, every case when
+%%% this library interprets a string one way, and RFC1342 says
+%%% something else, it should be considered as a bug.
+%%%
+%%% This library uses <a href="http://github.com/Vagabond/erlang-iconv/">erlang-iconv</a>
+%%% for charset conversions. Therefore, you need to have it installed on
+%%% your system before using `RFC1342 Decoder'.
+%%% @end
+%%%
 %%% Useful lecture:
-%%% http://www.faqs.org/rfcs/rfc822.html  (RFC822)
-%%% http://www.faqs.org/rfcs/rfc1341.html (RFC1341)
-%%% http://www.faqs.org/rfcs/rfc1342.html (RFC1342)
+%%% @reference <a href="http://www.faqs.org/rfcs/rfc822.html">RFC822</a>
+%%% @reference <a href="http://www.faqs.org/rfcs/rfc1341.html">RFC1341</a>
+%%% @reference <a href="http://www.faqs.org/rfcs/rfc1342.html">RFC1342</a>
+%%% @end
+%%%---------------------------------------------------------------------
+%%% Known issues
+%%%   * 75 character limit for code word may not be precisely checked
+%%%     (off-by-one error, ect.)</li>
 %%%---------------------------------------------------------------------
 %%% Exports
 %%%---------------------------------------------------------------------
 %%% decode(Encoded)
-%%%   Returns a list of UCS-4 Code Points, with each number representing
-%%%   a single code point. Encoded should be a binary representing
-%%%   text data following rules described in RFC1342. This function will
-%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
-%%%   into single UCS-4 representation.
-%%%---------------------------------------------------------------------
 %%% decode2iolist(Encoded)
-%%%   Returns an iolist of UCS-4 Code Points, with each number representing
-%%%   a single code point. Encoded should be a binary representing
-%%%   text data following rules described in RFC1342. This function will
-%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
-%%%   into single UCS-4 representation.
 %%%---------------------------------------------------------------------
 
 -module(rfc1342).
@@ -34,10 +45,29 @@
 %%----------------------------------------------------------------------
 %% Public interface
 %%----------------------------------------------------------------------
+
+%%% decode(Encoded)
+%%% @spec decode(Encoded::binary()) -> string()
+%%% @doc
+%%%   Returns a list of UCS-4 Code Points, with each number representing
+%%%   a single code point. `Encoded' should be a binary representing
+%%%   text data following rules described in RFC1342. This function will
+%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
+%%%   into single UCS-4 representation.
+%%% @end
 -spec(decode/1 :: (binary()) -> string()).
 decode(Encoded) ->
     lists:flatten(decode2iolist(Encoded)).
 
+%%% decode2iolist(Encoded)
+%%% @spec decode2iolist(Encoded::binary()) -> iolist()
+%%% @doc
+%%%   Returns an iolist of UCS-4 Code Points, with each number representing
+%%%   a single code point. `Encoded' should be a binary representing
+%%%   text data following rules described in RFC1342. This function will
+%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
+%%%   into single UCS-4 representation.
+%%% @end
 -spec(decode2iolist/1 :: (binary()) -> iolist()).
 decode2iolist(Encoded) ->
     lists:map(fun convert_string_part_to_ucs/1,
