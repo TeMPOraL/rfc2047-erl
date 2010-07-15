@@ -15,7 +15,9 @@
 %%%
 %%% This library uses <a href="http://github.com/Vagabond/erlang-iconv/">erlang-iconv</a>
 %%% for charset conversions. Therefore, you need to have it installed on
-%%% your system before using `RFC1342 Decoder'.
+%%% your system before using `RFC1342 Decoder'. Moreover, you should have
+%%% `iconv' started (ie. by calling `iconv:start/0') before calling any
+%%% function from this library.
 %%% @end
 %%%
 %%% Useful lecture:
@@ -122,6 +124,8 @@ split_string_to_conv_segments_tail(<<Char, Rest/binary>>, [AccH|Acc]) ->
 %% Returns:  {{charset, encoding, string}, rest of binary string} |
 %%           not_found
 %%----------------------------------------------------------------------
+%% @todo Optimize this function to use cons and list:reverse instead of
+%%       appending.
 isolate_next_convertable_substring(BinaryString) ->
     isolate_next_convertable_substring_tail(BinaryString,
 					    {[], undefined, undefined},
@@ -149,6 +153,25 @@ isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
 					Count) ->
     isolate_next_convertable_substring_tail(Rest, {PrevPart, Str ++ [Char], undefined}, Count + 1);
 
+% handle removal of space after encoded word
+isolate_next_convertable_substring_tail(<<Char1, Char2, Char3, Rest/binary>>, Result, Count)
+  when Char1 == $?,
+       Char2 == $=,
+       Char3 == 16#20,
+       Count =< (?RFC1342_MAX_CODESTRING_LENGTH-2) % <- 2 is because we capture 2 chars
+       ->
+    {Result, Rest};
+
+% handle removal of newline after encoded word
+isolate_next_convertable_substring_tail(<<Char1, Char2, Char3, Char4, Rest/binary>>, Result, Count)
+  when Char1 == $?,
+       Char2 == $=,
+       Char3 == $\r,
+       Char4 == $\n,
+       Count =< (?RFC1342_MAX_CODESTRING_LENGTH-2) % <- 2 is because we capture 2 chars
+       ->
+    {Result, Rest};
+
 isolate_next_convertable_substring_tail(<<Char1, Char2, Rest/binary>>, Result, Count)
   when Char1 == $?,
        Char2 == $=,
@@ -158,6 +181,10 @@ isolate_next_convertable_substring_tail(<<Char1, Char2, Rest/binary>>, Result, C
 
 isolate_next_convertable_substring_tail(<<Char1, _Rest/binary>>, _Result, _Count)
   when Char1 == $? ->
+    not_found;
+
+isolate_next_convertable_substring_tail(<<Char1, _Rest/binary>>, _Result, _Count)
+  when Char1 == 16#20 ->
     not_found;
 
 isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
