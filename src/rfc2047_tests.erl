@@ -150,17 +150,6 @@ comment_mode_on_test_() ->
 %%----------------------------------------------------------------------
 %% Unit tests :: Private functions
 %%----------------------------------------------------------------------
-split_string_to_conversion_segments_test() ->
-    ?assert(length(split_string_to_conversion_segments(<<"Now =?ISO-8859-1?Q?I_am_become_Death?=,? ? ? the destroyer of =?ISO-8859-1?Q?worlds?=.">>)) == 5),
-    %% RFC1342 says that a valid encoded word may contain only four question marks (including delimiters).
-    ?assert(length(split_string_to_conversion_segments(<<"=?CODING?= ??? ?=HORROR">>)) == 1),
-    %% RFC1342 limits the length of an encoded word to 75 characters (including encoding anc charset).
-    ?assert(length(split_string_to_conversion_segments(<<"=?ISO-8859-1?Q?Any_sufficiently_complicated_C_or_Fortran_program_contains_an_ad_hoc,_informally-specified,_bug-ridden,_slow_implementation_of_half_of_Common_Lisp.?=_-_Greenspun's_Tenth_Rule_of_Programming">>)) == 1),
-    ?assert(length(split_string_to_conversion_segments(<<"=?ISO-8859-1?Q?-Time_is_an_illusion._Lunchtime_doubly_so._-_Douglas_Adams-?=">>)) == 1),
-    ?assert(length(split_string_to_conversion_segments(<<"=?ISO-8859-1?Q?-Time_is_an_illusion._Lunchtime_doubly_so._-_Douglas_Adams?=">>)) == 3).
-
-%% TODO write tests imposing space separation, no invalid characters inside encoded words, ect.
-
 decode_qstring_test() ->
     "Now I am become Death, the destroyer of worlds." = 
 	decode_qstring("Now=20I=20am_become_=44eath,_the_destroyer_of=20worlds.").

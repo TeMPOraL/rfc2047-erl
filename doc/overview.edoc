@@ -1,8 +1,0 @@
-** this is the overview.edoc file for library rfc1342 **
-
-@author Jacek Zlydach <jacek.zlydach@erlang-solutions.com>
-@title Welcome to the RFC1342 Decoder library!
-@doc `RFC1342 Decoder' is a tool for processing strings in e-mail headers that
-can contain different charsets and encodings next to each other in the same text.
-It uses <a href="http://github.com/Vagabond/erlang-iconv/">erlang-iconv</a> for
-charset conversions.

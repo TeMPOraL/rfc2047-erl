@@ -32,24 +32,25 @@
 %%%---------------------------------------------------------------------
 %%% Exports
 %%%---------------------------------------------------------------------
-%%% decode(Encoded)
-%%% decode2iolist(Encoded)
+%%% decode/1, decode/2
+%%% decode2iolist/1, decode2iolist/2
 %%%---------------------------------------------------------------------
 
 -module(rfc1342).
 -created('12.07.2010').
 -created_by('jacek.zlydach@erlang-solutions.com').
--export([decode/1]).%, decode2iolist/1]).
+-export([decode/1, decode/2, decode2iolist/1, decode2iolist/2]).
 
 %% Constants
 -define(RFC1342_MAX_CODESTRING_LENGTH, 73).
 -define(RFC2047_MAX_CODESTRING_LENGTH_WITHOUT_INITIAL_DELIMITERS, 73).
--define(TEST, true).
+
 %% Unit testing
 %% For unit testing in the shell you may want to compile this module with:
 %%   c(rfc1342, [{d, 'TEST'}])
 %% to introduce TEST macro and export all functions, so that
 %% they are visible to rfc1342_tests module.
+
 -ifdef(TEST).
 -compile(export_all).
 -endif.
@@ -90,10 +91,17 @@
 %%----------------------------------------------------------------------
 decode(Encoded) ->
     decode(Encoded, normal).
-decode(Encoded, structured_field) ->
-    lists:flatten(apply_display_rules(decode_encoded_words(parse_input(Encoded, comments))));
-decode(Encoded, normal) ->
-    lists:flatten(apply_display_rules(decode_encoded_words(parse_input(Encoded, normal)))).
+
+decode(Encoded, Mode) ->
+    lists:flatten(decode2iolist(Encoded, Mode)).
+
+decode2iolist(Encoded) ->
+    decode2iolist(Encoded, normal).
+
+decode2iolist(Encoded, normal) ->
+    apply_display_rules(decode_encoded_words(parse_input(Encoded, normal)));
+decode2iolist(Encoded, structured_field) ->
+    apply_display_rules(decode_encoded_words(parse_input(Encoded, comments))).
 
 %%----------------------------------------------------------------------
 %% Private implementation v2.0
@@ -341,24 +349,7 @@ grab_linear_whitespace(<<13, 10, Rest/binary>>) ->
 %% Returns:  A list of already UCS-encoded strings and tuples
 %%           {charset, encoding, string to convert} needing conversion.
 %%----------------------------------------------------------------------
-split_string_to_conversion_segments(Binary) ->
-     split_string_to_conv_segments_tail(Binary, [[]]).
 
-split_string_to_conv_segments_tail(<<>>, Acc) ->
-    lists:reverse(Acc);
-split_string_to_conv_segments_tail(<<Char1, Char2, Rest/binary>>, [AccH|Acc])
-  when Char1 == $=, Char2 == $? ->
-    Result = isolate_next_convertable_substring(Rest),
-    case Result of
-	{Convertable, RestOfstring} ->
-	    split_string_to_conv_segments_tail(RestOfstring, [[], Convertable, AccH | Acc]);
-	not_found ->
-	    split_string_to_conv_segments_tail(Rest, [(AccH ++ [Char1, Char2]) | Acc])
-		%% FIXME
-		%% We can drop our search at this point
-    end;
-split_string_to_conv_segments_tail(<<Char, Rest/binary>>, [AccH|Acc]) ->
-    split_string_to_conv_segments_tail(Rest, [(AccH ++ [Char]) | Acc]).
 
 %%----------------------------------------------------------------------
 %% Function: isolate_next_convertable_substring/1
@@ -370,73 +361,6 @@ split_string_to_conv_segments_tail(<<Char, Rest/binary>>, [AccH|Acc]) ->
 %%----------------------------------------------------------------------
 %% @todo Optimize this function to use cons and list:reverse instead of
 %%       appending.
-isolate_next_convertable_substring(BinaryString) ->
-    isolate_next_convertable_substring_tail(BinaryString,
-					    {[], undefined, undefined},
-					    0).
-%% Limit of 75 chars enforced by RFC 1342 (including initial =? delimiter)
-isolate_next_convertable_substring_tail(_, _, ?RFC1342_MAX_CODESTRING_LENGTH) -> not_found;
-isolate_next_convertable_substring_tail(<<>>, _, _) -> not_found;
-%% Process first part
-isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
-					{Str, undefined, undefined},
-					Count) when Char == $? ->
-    isolate_next_convertable_substring_tail(Rest, {Str, [], undefined}, Count+1);
-isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
-					{Str, undefined, undefined},
-					Count) ->
-    isolate_next_convertable_substring_tail(Rest, {Str ++ [Char], undefined, undefined}, Count+1);
-%% Process second part
-isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
-					{PrevPart, Str, undefined},
-					Count) when Char == $? ->
-    isolate_next_convertable_substring_tail(Rest, {PrevPart, Str, []}, Count + 1);
-
-isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
-					{PrevPart, Str, undefined},
-					Count) ->
-    isolate_next_convertable_substring_tail(Rest, {PrevPart, Str ++ [Char], undefined}, Count + 1);
-
-% handle removal of space after encoded word
-isolate_next_convertable_substring_tail(<<Char1, Char2, Char3, Rest/binary>>, Result, Count)
-  when Char1 == $?,
-       Char2 == $=,
-       Char3 == 16#20,
-       Count =< (?RFC1342_MAX_CODESTRING_LENGTH-2) % <- 2 is because we capture 2 chars
-       ->
-    {Result, Rest};
-
-% handle removal of newline after encoded word
-isolate_next_convertable_substring_tail(<<Char1, Char2, Char3, Char4, Rest/binary>>, Result, Count)
-  when Char1 == $?,
-       Char2 == $=,
-       Char3 == $\r,
-       Char4 == $\n,
-       Count =< (?RFC1342_MAX_CODESTRING_LENGTH-2) % <- 2 is because we capture 2 chars
-       ->
-    {Result, Rest};
-
-isolate_next_convertable_substring_tail(<<Char1, Char2, Rest/binary>>, Result, Count)
-  when Char1 == $?,
-       Char2 == $=,
-       Count =< (?RFC1342_MAX_CODESTRING_LENGTH-2) % <- 2 is because we capture 2 chars
-       ->
-    {Result, Rest};
-
-isolate_next_convertable_substring_tail(<<Char1, _Rest/binary>>, _Result, _Count)
-  when Char1 == $? ->
-    not_found;
-
-isolate_next_convertable_substring_tail(<<Char1, _Rest/binary>>, _Result, _Count)
-  when Char1 == 16#20 ->
-    not_found;
-
-isolate_next_convertable_substring_tail(<<Char, Rest/binary>>,
-					{FirstPart, SecondPart, Str},
-					Count) ->
-    isolate_next_convertable_substring_tail(Rest,
-					    {FirstPart, SecondPart, Str ++ [Char]},
-					    Count + 1).
 
 %%----------------------------------------------------------------------
 %% Function: convert_string_parts_to_ucs/1
