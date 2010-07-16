@@ -11,7 +11,8 @@ This library requires [[http://github.com/Vagabond/erlang-iconv/][erlang-iconv]]
  - src/rfc2047_tests.erl - unit tests
 
 ** Usage and documentation
-See doc/ for EDOC documentation.
+See doc/ for EDoc documentation.
+If you think that information given in documentation is insufficient or has other problems, please let us know and we will fix them.
 
 ** Licence
 This library is distributed under New BSD Licence. See LICENCE for details.

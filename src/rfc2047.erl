@@ -32,7 +32,8 @@
 %%%---------------------------------------------------------------------
 %%% @doc 
 %%% RFC2047 Decoder - a simple tool to decode strings conforming to
-%%% RFC2047 that can be found in e-mail headers.
+%%% RFC2047 that can be found in e-mail headers and convert them to
+%%% unified UCS-4 (Unicode) representation.
 %%%
 %%% The <em>primary goal is to make this library interpret strings as close
 %%% to the way RFC2047 describes it as possible</em> - including those tricky
@@ -45,6 +46,25 @@
 %%% your system before using `RFC2047 Decoder'. Moreover, you should have
 %%% `iconv' started (ie. by calling `iconv:start/0') before calling any
 %%% function from this library.
+%%%
+%%% All functions operate on header field body, passed as binary string.
+%%% Because some headers (called "structured fields" in RFC 2047) have additional
+%%% processing rules regarding encoded words, you should supply information whether
+%%% input should be decoded as `structured-field' or normal text. See decode/2 for details.
+%%%
+%%% The output of this library is a list (or ioList) of UCS-4 code points.
+%%%
+%%% <h2>Usage example</h2>
+%%%
+%%% A typical `From:' header may contain a following address:
+%%% `From: =?ISO-8859-2?Q?Andr=E9?= Pirard <PIRARD@vml.ulg.ac.be>'.
+%%% Because `From:' is a `structured-field', an example decoding process would look like:
+%%% ```
+%%% > rfc2047:decode(<<"=?ISO-8859-2?Q?Andr=E9?= Pirard <PIRARD@vml.ulg.ac.be>">>, structured_field).
+%%% "André Pirard <PIRARD@vml.ulg.ac.be>"
+%%% '''
+%%%
+%%% For information whether a given header is `structured-field' or normal, see RFC 822.
 %%% @end
 %%%
 %%% Useful lecture:
@@ -52,6 +72,8 @@
 %%% @reference <a href="http://www.faqs.org/rfcs/rfc1341.html">RFC1341</a>
 %%% @reference <a href="http://www.faqs.org/rfcs/rfc1342.html">RFC1342</a>
 %%% @reference <a href="http://www.faqs.org/rfcs/rfc2047.html">RFC2047</a>
+%%% @reference <a href="http://en.wikipedia.org/wiki/Unicode">Unicode (@ Wikipedia)</a>
+%%% @reference <a href="http://en.wikipedia.org/wiki/UTF-32/UCS-4">UCS-4 (@ Wikipedia)</a>
 %%% @end
 %%%---------------------------------------------------------------------
 %%% Exports
