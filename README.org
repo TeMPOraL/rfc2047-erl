@@ -14,4 +14,4 @@ This library requires [[http://github.com/Vagabond/erlang-iconv/][erlang-iconv]]
 See doc/ for EDOC documentation.
 
 ** Licence
-This library is distributed under New BSD Licence. See [[LICENCE][LICENCE]] for details.
+This library is distributed under New BSD Licence. See LICENCE for details.
