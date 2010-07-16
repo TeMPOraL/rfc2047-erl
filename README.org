@@ -1,0 +1,17 @@
+* RFC 2047 Decoder
+
+** Overview
+RFC 2047 Decoder (aka. rfc2047-erl) is a library for decoding ASCII and NON-ASCII information in message headers and converting them to UCS-4 (Unicode).
+
+** Requirements
+This library requires [[http://github.com/Vagabond/erlang-iconv/][erlang-iconv]] to be installed before.
+
+** Files
+ - src/rfc2047.erl - main library file
+ - src/rfc2047_tests.erl - unit tests
+
+** Usage and documentation
+See doc/ for EDOC documentation.
+
+** Licence
+This library is distributed under New BSD Licence. See [[LICENCE][LICENCE]] for details.
