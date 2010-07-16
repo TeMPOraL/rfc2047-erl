@@ -39,11 +39,12 @@
 -module(rfc1342).
 -created('12.07.2010').
 -created_by('jacek.zlydach@erlang-solutions.com').
--export([decode/1, decode2iolist/1]).
+-export([decode/1]).%, decode2iolist/1]).
 
 %% Constants
 -define(RFC1342_MAX_CODESTRING_LENGTH, 73).
-
+-define(RFC2047_MAX_CODESTRING_LENGTH_WITHOUT_INITIAL_DELIMITERS, 73).
+-define(TEST, true).
 %% Unit testing
 %% For unit testing in the shell you may want to compile this module with:
 %%   c(rfc1342, [{d, 'TEST'}])
@@ -66,9 +67,9 @@
 %%%   decode Q-encoded and BCD-encoded strings and unify all charsets
 %%%   into single UCS-4 representation.
 %%% @end
--spec(decode/1 :: (binary()) -> string()).
-decode(Encoded) ->
-    lists:flatten(decode2iolist(Encoded)).
+%-spec(decode/1 :: (binary()) -> string()).
+%decode(Encoded) ->
+%    lists:flatten(decode2iolist(Encoded)).
 
 %%% decode2iolist(Encoded)
 %%% @spec decode2iolist(Encoded::binary()) -> iolist()
@@ -79,14 +80,257 @@ decode(Encoded) ->
 %%%   decode Q-encoded and BCD-encoded strings and unify all charsets
 %%%   into single UCS-4 representation.
 %%% @end
--spec(decode2iolist/1 :: (binary()) -> iolist()).
-decode2iolist(Encoded) ->
-    lists:map(fun convert_string_part_to_ucs/1,
-                split_string_to_conversion_segments(Encoded)).
+%% -spec(decode2iolist/1 :: (binary()) -> iolist()).
+%% decode2iolist(Encoded) ->
+%%     lists:map(fun convert_string_part_to_ucs/1,
+%%                 split_string_to_conversion_segments(Encoded)).
+
+%%----------------------------------------------------------------------
+%% Public interface v2.0
+%%----------------------------------------------------------------------
+decode(Encoded) ->
+    decode(Encoded, normal).
+decode(Encoded, structured_field) ->
+    lists:flatten(apply_display_rules(decode_encoded_words(parse_input(Encoded, comments))));
+decode(Encoded, normal) ->
+    lists:flatten(apply_display_rules(decode_encoded_words(parse_input(Encoded, normal)))).
+
+%%----------------------------------------------------------------------
+%% Private implementation v2.0
+%%----------------------------------------------------------------------
+
+%% NOTE
+%% Way to optimize: we could make parser fire up a "parse top-level encoded words"
+%% on just-parsed comment, thereby saving another pass.
+
+%% apply_display_rules/1 should alter decoded token list to reflect display
+%% rules of RFC2047 - remove spaces between adjacent encoded words. Also, this
+%% function strips input tree out of token type tags, so that it may be simply flattened
+%% in order to get a final string.
+apply_display_rules(Tree) ->
+    apply_display_rules(Tree, []).
+
+apply_display_rules([], Acu) ->
+    lists:reverse(Acu);
+apply_display_rules([{decoded_word, A}, {linear_whitespace, _}, {decoded_word, B} | Rest],
+		   Acu) ->
+    apply_display_rules([{decoded_word, B} | Rest], [A | Acu]);
+apply_display_rules([{comment, What} | Rest], Acu) ->
+    apply_display_rules(Rest, [$), apply_display_rules(What, []), $( | Acu]);
+apply_display_rules([{_, What} | Rest], Acu) ->
+    apply_display_rules(Rest, [What | Acu]).
+
+%% decode_encoded_words/1 should 
+decode_encoded_words(List) ->
+    lists:map(fun tree_decode_elements/1,
+	      List).
+
+%% parse_input/2 should convert binary string into list of tokens
+parse_input(InputBinary, Mode) ->
+    parse_input(InputBinary, Mode, false, []).
+
+parse_input(<<>>, _, _, TokenAccu) ->
+    lists:reverse(TokenAccu);
+
+% In comment mode, reading {text, ...} token will break on encountering $( or $).
+% In normal mode, both $( and $) will be treated as normal text.
+% Recognize comments in comment mode.
+
+parse_input(<<Char, Rest/binary>>, comments, InComment, TokenAccu) when Char == $(->
+    {Token, RemainingBinary} = parse_input(Rest, comments, true, []),
+    parse_input(RemainingBinary, comments, InComment, [Token | TokenAccu]);
+
+% Finish comments in comment mode
+parse_input(<<Char, Rest/binary>>, comments, true, TokenAccu) when Char == $) ->
+    {{comment, lists:reverse(TokenAccu)}, Rest};
+
+% Watch for potential encoded words
+parse_input(Binary = <<Char, Char2, Rest/binary>>, CommentMode, InComment, TokenAccu) when
+      Char  == $=,
+      Char2 == $? ->
+    %% try_scan_encoded_word/3 will return either {encoded_word, ...} or will backtrack
+    %% by returning not_found, in which case we continue with reading it as text
+    Result = try_scan_encoded_word(Rest, CommentMode, InComment),
+    case Result of
+	{Token, RestOfBinary} ->
+	    parse_input(RestOfBinary, CommentMode, InComment, [Token | TokenAccu]);
+	not_found ->
+	    {Token, RestOfBinary} = try_scan_text(Binary, CommentMode, InComment),
+	    parse_input(RestOfBinary, CommentMode, InComment, [Token | TokenAccu])
+    end;
+
+% Choose between linearwhitespace
+parse_input(Binary, CommentMode, InComment, TokenAccu) ->
+     case is_linear_whitespace_next(Binary) of
+	true ->
+	    {Token, RestOfBinary} = try_scan_linear_whitespace(Binary);
+	_ ->
+	    {Token, RestOfBinary} = try_scan_text(Binary, CommentMode, InComment)
+    end,
+    parse_input(RestOfBinary, CommentMode, InComment, [Token | TokenAccu]).
 
 %%----------------------------------------------------------------------
 %% Private implementation
 %%----------------------------------------------------------------------
+
+%% (15.07.2010) Will finish that tomorrow...
+
+%% KALENDARZ - AGA PO 26-TYM
+
+tree_decode_elements({comment, CommentData}) ->
+    {comment, lists:map(fun tree_decode_elements/1,
+	      CommentData)};
+tree_decode_elements({_, {Charset, Encoding, Word}} = {encoded_word, EncodedWord}) ->
+    case (catch convert_string_part_to_ucs(EncodedWord)) of
+	{_, _} -> {text, "=?" ++ Charset ++ "?" ++ Encoding ++ "?" ++ Word ++ "?="};
+	Result -> {decoded_word, Result}
+    end;
+%    {decoded_word, convert_string_part_to_ucs(EncodedWord)};
+tree_decode_elements(Rest) ->
+    Rest.
+
+try_scan_linear_whitespace(Binary) ->
+    try_scan_linear_whitespace(Binary, []).
+
+try_scan_linear_whitespace(Binary, Buffer) ->
+    case is_linear_whitespace_next(Binary) of
+	true ->
+	    {WS, Rest} = grab_linear_whitespace(Binary),
+	    try_scan_linear_whitespace(Rest, [WS | Buffer]);
+	false ->
+	    {{linear_whitespace, lists:reverse(Buffer)}, Binary}
+    end.
+
+
+try_scan_text(InputBinary, Mode, InComment) ->
+    try_scan_text(InputBinary, Mode, InComment, []).
+
+% end of binary == end of processing
+try_scan_text(<<>>, _, _, Accu) ->
+    {{text, lists:reverse(Accu)}, <<>>};
+
+% handle comments in comment mode
+try_scan_text(<<Char, Rest/binary>>, comments, _ , Accu) when Char == $( ->
+    {{text, lists:reverse(Accu)}, <<Char, Rest/binary>>};
+
+try_scan_text(<<Char, Rest/binary>>, comments, true , Accu) when Char == $) ->
+    {{text, lists:reverse(Accu)}, <<Char, Rest/binary>>};
+
+% linear whitespaces are handled elsewhere; otherwise read stuff
+try_scan_text(Binary = <<Char, Rest/binary>>, Mode, InComment, Accu) ->
+    case is_linear_whitespace_next(Binary) of
+	true -> {{text, lists:reverse(Accu)}, Binary};
+	_ -> try_scan_text(Rest, Mode, InComment, [Char | Accu])
+    end.
+
+try_scan_encoded_word(Binary, CommentMode, InComment) ->
+    try_scan_encoded_word(Binary,
+			  CommentMode,
+			  InComment,
+			  {[], undefined, undefined},
+			  0).
+
+% NOTE Legal (final) whitespaces will be checked along with ?=
+
+% Length limit.
+try_scan_encoded_word(_, _, _, _, ?RFC2047_MAX_CODESTRING_LENGTH_WITHOUT_INITIAL_DELIMITERS) ->
+    not_found;
+% Fail if end-of-data reached before completion of encoded word.
+try_scan_encoded_word(<<>>, _, _, _, _) ->
+    not_found;
+
+% Process first part (charset)
+try_scan_encoded_word(<<Char, Rest/binary>>, CM, InC, {Str, undefined, undefined}, Count)
+  when Char == $? ->
+    try_scan_encoded_word(Rest, CM, InC, {lists:reverse(Str), [], undefined}, Count+1);
+try_scan_encoded_word(Binary = <<Char, Rest/binary>>,
+		      CM,
+		      InC,
+		      {Str, undefined, undefined},
+		      Count) ->
+    case is_linear_whitespace_next(Binary) of
+	true ->
+	    not_found;
+	_ ->
+	    try_scan_encoded_word(Rest, CM, InC, {[Char|Str], undefined, undefined}, Count+1)
+    end;
+
+% Process second part (encoding)
+try_scan_encoded_word(<<Char, Rest/binary>>, CM, InC, {PrevStr, Str, undefined}, Count)
+  when Char == $? ->
+    try_scan_encoded_word(Rest, CM, InC, {PrevStr, lists:reverse(Str), []}, Count+1);
+try_scan_encoded_word(Binary = <<Char, Rest/binary>>,
+		      CM,
+		      InC,
+		      {PrevStr, Str, undefined},
+		      Count) ->
+    case is_linear_whitespace_next(Binary) of
+	true ->
+	    not_found;
+	_ ->
+	    try_scan_encoded_word(Rest, CM, InC, {PrevStr, [Char|Str], undefined}, Count+1)
+    end;
+% Process third part (encoded word)
+% a) comment-ending
+% b) linear-whitespace-ending
+% c) legal char addition
+try_scan_encoded_word(<<Char, Char2, Char3, Rest/binary>>,
+		      comments,
+		      true,
+		      {FirstPart, SecondPart, Str},
+		      _Count) 
+  when Char  == $?,
+       Char2 == $=,
+       Char3 == $) ->
+    {{encoded_word, {FirstPart, SecondPart, lists:reverse(Str)}}, <<Char3, Rest/binary>>};
+try_scan_encoded_word(<<Char, Char2, Rest/binary>>,
+		     _CM,
+		     _InC,
+		     {FirstPart, SecondPart, Str},
+		     _Count)
+  when Char  == $?,
+       Char2 == $= ->
+    case is_linear_whitespace_next(Rest) of
+	true ->
+	    {{encoded_word, {FirstPart, SecondPart, lists:reverse(Str)}}, Rest};
+	_ ->
+	    case size(Rest) of
+		0 -> {{encoded_word, {FirstPart, SecondPart, lists:reverse(Str)}}, Rest};
+		_ -> not_found
+	    end
+    end;
+try_scan_encoded_word(Binary = <<Char, Rest/binary>>,
+		      CM,
+		      InC,
+		      {FirstPart, SecondPart, Str},
+		      Count) ->
+    case is_linear_whitespace_next(Binary) of
+	true ->
+	    not_found;
+	false ->
+	    try_scan_encoded_word(Rest,
+				  CM,
+				  InC,
+				  {FirstPart, SecondPart, [Char | Str]},
+				  Count + 1)
+    end.
+    
+
+is_linear_whitespace_next(<<16#20, _/binary>>) ->
+    true;
+is_linear_whitespace_next(<<$\t, _/binary>>) ->
+    true;
+is_linear_whitespace_next(<<13, 10, _/binary>>) ->
+    true;
+is_linear_whitespace_next(_) ->
+    false.
+
+grab_linear_whitespace(<<16#20, Rest/binary>>) ->
+    {16#20, Rest};
+grab_linear_whitespace(<<$\t, Rest/binary>>) ->
+    {$\t, Rest};
+grab_linear_whitespace(<<13, 10, Rest/binary>>) ->
+    {[13, 10], Rest}.
 
 %%----------------------------------------------------------------------
 %% Function: split_string_to_conversion_segments/1
@@ -213,10 +457,7 @@ convert_string_part_to_ucs({Charset, "b", Text}) ->
 convert_string_part_to_ucs({Charset, "Q", Text}) ->
     convert_decoded_string_to_ucs(Charset, decode_qstring(Text));
 convert_string_part_to_ucs({Charset, "q", Text}) ->
-    convert_decoded_string_to_ucs(Charset, decode_qstring(Text));
-
-convert_string_part_to_ucs(SomethingElse) ->
-    SomethingElse.
+    convert_decoded_string_to_ucs(Charset, decode_qstring(Text)).
 
 %%----------------------------------------------------------------------
 %% Function: convert_decoded_string_to_ucs/2
@@ -249,6 +490,7 @@ convert_decoded_string_to_ucs(Charset, Text) ->
 %% Args:     Text - list of characters to be decoded.
 %% Returns:  Decoded string.
 %%----------------------------------------------------------------------
+%% @todo make this function die if invalid character is specified
 decode_qstring(Text) ->
     decode_qstring_tail(Text, []).
 

@@ -60,8 +60,8 @@ hex_chars_in_q_encoding_test() ->
 encoded_word_separation_test_() ->
     [{"\"an 'encoded-word' (...) MUST be separated from any adjacent 'encoded-word' or 'text' by 'linear-white-space'\" - RFC2047, page 7",
       [?_assert(rfc1342:decode(<<"The ships =?ISO-8859-1?Q?hung_in_the_sky_?=in much the same way that bricks don't.">>) == "The ships =?ISO-8859-1?Q?hung_in_the_sky_?=in much the same way that bricks don't."),
-       ?_assert(rfc1342:decode(<<"The ships=?ISO-8859-1?Q?_hung_in_the_sky?= in much the same way that bricks don't.">>) == "The ships=?ISO-8859-1?Q?_hung_in_the_sky?=in much the same way that bricks don't."),
-       ?_assert(rfc1342:decode(<<"The ships	=?ISO-8859-1?Q?hung_in_the_sky?= in much the same way that bricks don't.">>) == "The ships	hung in the sky in much the same way that bricks don't."),
+       ?_assert(rfc1342:decode(<<"The ships=?ISO-8859-1?Q?_hung_in_the_sky?= in much the same way that bricks don't.">>) == "The ships=?ISO-8859-1?Q?_hung_in_the_sky?= in much the same way that bricks don't."),
+       ?_assert(rfc1342:decode(<<"The ships\t=?ISO-8859-1?Q?hung_in_the_sky?= in much the same way that bricks don't.">>) == "The ships\thung in the sky in much the same way that bricks don't."),
        ?_assert(rfc1342:decode(<<"The ships =?ISO-8859-1?Q?hung_in_the_sky?==?ISO-8859-2?Q?_in_much_the_same_way?= that bricks don't.">>) == "The ships =?ISO-8859-1?Q?hung_in_the_sky?==?ISO-8859-2?Q?_in_much_the_same_way?= that bricks don't.")]}].
 
 
@@ -71,11 +71,11 @@ space_and_newline_handling_test_() ->
     [{"A single space between encoded words should be discarded.",
       ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?= =?ISO-8859-1?Q?ay_as_one_minute?= ago.">>) == "Nothing is as far away as one minute ago.")},
      {"Multiple spaces and horizontal tabs between encoded words should be discarded.",
-      ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=     	          =?ISO-8859-1?Q?ay_as_one_minute?= ago.">>) == "Nothing is as far away as one minute ago.")},
+      ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=   \t    =?ISO-8859-1?Q?ay_as_one_minute?= ago.">>) == "Nothing is as far away as one minute ago.")},
      {"A single newline between encoded words should be discarded.",
       ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=\r\n=?ISO-8859-1?Q?ay_as_one_minute?= ago.">>) == "Nothing is as far away as one minute ago.")},
      {"Multiple newlines after an encoded word should be discarded.",
-      ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=\r\n\r\n\r\n\r\n=?ISO-8859-1?Q?ay_as_one_minute?=  ago.">>) == "Nothing is as far away as one minute ago.")},
+      ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_aw?=\r\n\r\n\r\n\r\n=?ISO-8859-1?Q?ay_as_one_minute?= ago.">>) == "Nothing is as far away as one minute ago.")},
      {"A single space between encoded word and normal word should NOT be discarded.",
       ?_assert(rfc1342:decode(<<"Nothing =?ISO-8859-1?Q?is_as_far_away?= as one minute ago.">>) == "Nothing is as far away as one minute ago.")},
 % NOT VALID IN RFC2047, TO THE BEST OF MY KNOWLEDGE
@@ -139,13 +139,13 @@ comment_mode_off_test_() ->
 
 %% TODO add comment mode to public interface
 comment_mode_on_test_() ->
-    [?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?=)">>) == "(a)"),
-     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?= b)">>) == "(a b)"),
-     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?= =?ISO-8859-1?Q?b?=)">>) == "(ab)"),
-     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?=  =?ISO-8859-1?Q?b?=)">>) == "(ab)"),
-     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?=\r\n    =?ISO-8859-1?Q?b?=)">>) == "(ab)"),
-     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a_b?=)">>) == "(a b)"),
-     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?= =?ISO-8859-2?Q?_b?=)">>) == "(a b)")].
+    [?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?=)">>, structured_field) == "(a)"),
+     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?= b)">>, structured_field) == "(a b)"),
+     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?= =?ISO-8859-1?Q?b?=)">>, structured_field) == "(ab)"),
+     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?=  =?ISO-8859-1?Q?b?=)">>, structured_field) == "(ab)"),
+     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?=\r\n    =?ISO-8859-1?Q?b?=)">>, structured_field) == "(ab)"),
+     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a_b?=)">>, structured_field) == "(a b)"),
+     ?_assert(rfc1342:decode(<<"(=?ISO-8859-1?Q?a?= =?ISO-8859-2?Q?_b?=)">>, structured_field) == "(a b)")].
 
 %%----------------------------------------------------------------------
 %% Unit tests :: Private functions
