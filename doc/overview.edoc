@@ -1,5 +1,6 @@
 ** this is the overview.doc file for the rfc2047-erl library. **
 @author Jacek Zlydach <jacek.zlydach@erlang-solutions.com>
+@author Krzysztof Goj <krzysztof.goj@erlang-solutions.com>
 @title Welcome to the `RFC2047 Decoder'!
 @doc `RFC2047 Decoder' is a simple tool to decode strings conforming to
 RFC2047 that can be found in e-mail headers.
