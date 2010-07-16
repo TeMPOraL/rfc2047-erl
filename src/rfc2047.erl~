@@ -1,21 +1,21 @@
 %%%---------------------------------------------------------------------
-%%% RFC2047 Decoder
+%%% RFC1342 Decoder
 %%% @author Jacek Zlydach <jacek.zlydach@erlang-solutions.com>
 %%% @todo Krzysiek - sign yourself here :)
 %%%---------------------------------------------------------------------
 %%% @doc 
-%%% RFC2047 Decoder - a simple tool to decode strings conforming to
-%%% RFC2047 that can be found in e-mail headers.
+%%% RFC1342 Decoder - a simple tool to decode strings conforming to
+%%% RFC1342 that can be found in e-mail headers.
 %%%
 %%% The <em>primary goal is to make this library interpret strings as close
-%%% to the way RFC2047 describes it as possible</em> - including those tricky
+%%% to the way RFC1342 describes it as possible</em> - including those tricky
 %%% edge cases. Therefore, unless otherwise noted, every case when
-%%% this library interprets a string one way, and RFC2047 says
+%%% this library interprets a string one way, and RFC1342 says
 %%% something else, it should be considered as a bug.
 %%%
 %%% This library uses <a href="http://github.com/Vagabond/erlang-iconv/">erlang-iconv</a>
 %%% for charset conversions. Therefore, you need to have it installed on
-%%% your system before using `RFC2047 Decoder'. Moreover, you should have
+%%% your system before using `RFC1342 Decoder'. Moreover, you should have
 %%% `iconv' started (ie. by calling `iconv:start/0') before calling any
 %%% function from this library.
 %%% @end
@@ -24,8 +24,11 @@
 %%% @reference <a href="http://www.faqs.org/rfcs/rfc822.html">RFC822</a>
 %%% @reference <a href="http://www.faqs.org/rfcs/rfc1341.html">RFC1341</a>
 %%% @reference <a href="http://www.faqs.org/rfcs/rfc1342.html">RFC1342</a>
-%%% @reference <a href="http://www.faqs.org/rfcs/rfc2047.html">RFC2047</a>
 %%% @end
+%%%---------------------------------------------------------------------
+%%% Known issues
+%%%   * 75 character limit for code word may not be precisely checked
+%%%     (off-by-one error, ect.)</li>
 %%%---------------------------------------------------------------------
 %%% Exports
 %%%---------------------------------------------------------------------
@@ -33,12 +36,13 @@
 %%% decode2iolist/1, decode2iolist/2
 %%%---------------------------------------------------------------------
 
--module(rfc2047).
+-module(rfc1342).
 -created('12.07.2010').
 -created_by('jacek.zlydach@erlang-solutions.com').
 -export([decode/1, decode/2, decode2iolist/1, decode2iolist/2]).
 
 %% Constants
+-define(RFC1342_MAX_CODESTRING_LENGTH, 73).
 -define(RFC2047_MAX_CODESTRING_LENGTH_WITHOUT_INITIAL_DELIMITERS, 73).
 
 %% Unit testing
@@ -52,67 +56,48 @@
 -endif.
 
 %%----------------------------------------------------------------------
-%% Public interface v2.0
+%% Public interface
 %%----------------------------------------------------------------------
 
 %%% decode(Encoded)
 %%% @spec decode(Encoded::binary()) -> string()
 %%% @doc
 %%%   Returns a list of UCS-4 Code Points, with each number representing
-%%%   a single code point.
-%%%
-%%%   Equivalent to: `decode(Encoded, normal)'.
-%%%   @see decode/2.
-%%% @end
--spec(decode/1 :: (binary()) -> string()).
-decode(Encoded) ->
-    decode(Encoded, normal).
-
-%%% decode(Encoded, Mode)
-%%% @spec decode(Encoded::binary(), Mode::atom()) -> string()
-%%% @doc
-%%%   Returns a list of UCS-4 Code Points, with each number representing
 %%%   a single code point. `Encoded' should be a binary representing
-%%%   text data following rules described in RFC2047. This function will
-%%%   decode Q-encoded and B-encoded strings and unify all charsets
+%%%   text data following rules described in RFC1342. This function will
+%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
 %%%   into single UCS-4 representation.
-%%%
-%%%   `Mode' should take one of two values:
-%%%    <ul>
-%%%         <li>`normal' - interpret input as normal text (like in `Subject' header)</li>
-%%%         <li>`structured_field' - interpret input as structured field, which can contain comments in parentheses.</li>
-%%%    </ul>
 %%% @end
--spec(decode/2 :: (binary(), atom()) -> string()).
-decode(Encoded, Mode) ->
-    lists:flatten(decode2iolist(Encoded, Mode)).
+%-spec(decode/1 :: (binary()) -> string()).
+%decode(Encoded) ->
+%    lists:flatten(decode2iolist(Encoded)).
 
 %%% decode2iolist(Encoded)
 %%% @spec decode2iolist(Encoded::binary()) -> iolist()
 %%% @doc
 %%%   Returns an iolist of UCS-4 Code Points, with each number representing
-%%%   a single code point.
-%%%
-%%%   Equivalent to `decode2iolist(Encoded, normal)'.
-%%%   @see decode2iolist/2.
+%%%   a single code point. `Encoded' should be a binary representing
+%%%   text data following rules described in RFC1342. This function will
+%%%   decode Q-encoded and BCD-encoded strings and unify all charsets
+%%%   into single UCS-4 representation.
 %%% @end
--spec(decode2iolist/1 :: (binary()) -> iolist()).
+%% -spec(decode2iolist/1 :: (binary()) -> iolist()).
+%% decode2iolist(Encoded) ->
+%%     lists:map(fun convert_string_part_to_ucs/1,
+%%                 split_string_to_conversion_segments(Encoded)).
+
+%%----------------------------------------------------------------------
+%% Public interface v2.0
+%%----------------------------------------------------------------------
+decode(Encoded) ->
+    decode(Encoded, normal).
+
+decode(Encoded, Mode) ->
+    lists:flatten(decode2iolist(Encoded, Mode)).
+
 decode2iolist(Encoded) ->
     decode2iolist(Encoded, normal).
 
-%%% decode2iolist(Encoded, Mode)
-%%% @spec decode2iolist(Encoded::binary(), Mode::atom()) -> iolist()
-%%% @doc
-%%%   Returns an iolist of UCS-4 Code Points, with each number representing
-%%%   a single code point. `Encoded' should be a binary representing
-%%%   text data following rules described in RFC2047. This function will
-%%%   decode Q-encoded and B-encoded strings and unify all charsets
-%%%   into single UCS-4 representation.
-%%%
-%%%   For description of `Mode' parameter and allowed values, see decode/2.
-%%%   @see decode/2.
-%%% @end
--spec(decode2iolist/2 :: (binary(), atom()) -> iolist()).
 decode2iolist(Encoded, normal) ->
     apply_display_rules(decode_encoded_words(parse_input(Encoded, normal)));
 decode2iolist(Encoded, structured_field) ->
@@ -122,18 +107,14 @@ decode2iolist(Encoded, structured_field) ->
 %% Private implementation v2.0
 %%----------------------------------------------------------------------
 
-%%----------------------------------------------------------------------
-%% Function: apply_display_rules/1
-%% Purpose:  apply_display_rules/1 should alter decoded token list to
-%%           reflect display rules defined in RFC2047 - removing
-%%           linear-whitespaces between adjacent encoded words. Also,
-%%           this function strips input tree out of token type tags, so
-%%           that it may be simply flattened in order to get a final
-%%           string.
-%% Args:     Tree - a syntax tree from parse_input/2.
-%% Returns:  A list of UCS-encoded lists to be flattened or treated as
-%%           an iolist.
-%%----------------------------------------------------------------------
+%% NOTE
+%% Way to optimize: we could make parser fire up a "parse top-level encoded words"
+%% on just-parsed comment, thereby saving another pass.
+
+%% apply_display_rules/1 should alter decoded token list to reflect display
+%% rules of RFC2047 - remove spaces between adjacent encoded words. Also, this
+%% function strips input tree out of token type tags, so that it may be simply flattened
+%% in order to get a final string.
 apply_display_rules(Tree) ->
     apply_display_rules(Tree, []).
 
@@ -152,15 +133,6 @@ decode_encoded_words(List) ->
     lists:map(fun tree_decode_elements/1,
 	      List).
 
-%%----------------------------------------------------------------------
-%% Function: parse_input/2
-%% Purpose:  Parses input binary string into a syntax tree.
-%% Args:     BinaryString - a binary ASCII-7 string.
-%%           Mode - eiter 'normal' or 'comments' - depending on whether
-%%           we should treat the text as normal or structured-field
-%%           (the second one allows using comments in parentheses).
-%% Returns:  Syntax tree.
-%%----------------------------------------------------------------------
 %% parse_input/2 should convert binary string into list of tokens
 parse_input(InputBinary, Mode) ->
     parse_input(InputBinary, Mode, false, []).
@@ -195,7 +167,7 @@ parse_input(Binary = <<Char, Char2, Rest/binary>>, CommentMode, InComment, Token
 	    parse_input(RestOfBinary, CommentMode, InComment, [Token | TokenAccu])
     end;
 
-% Choose between linear-whitespace and text
+% Choose between linearwhitespace
 parse_input(Binary, CommentMode, InComment, TokenAccu) ->
      case is_linear_whitespace_next(Binary) of
 	true ->
@@ -206,13 +178,13 @@ parse_input(Binary, CommentMode, InComment, TokenAccu) ->
     parse_input(RestOfBinary, CommentMode, InComment, [Token | TokenAccu]).
 
 %%----------------------------------------------------------------------
-%% Function: tree_decode_elements/1
-%% Purpose:  Walks through the tree generated by parse_input and decodes
-%%           every encoded-word it meets, replacing {encoded_word, Encoded}
-%%           with {decoded_word, Decoded}.
-%% Args:     BinaryString - a binary ASCII-7 string.
-%% Returns:  {linear_whitespace, LinearWhitespace}
+%% Private implementation
 %%----------------------------------------------------------------------
+
+%% (15.07.2010) Will finish that tomorrow...
+
+%% KALENDARZ - AGA PO 26-TYM
+
 tree_decode_elements({comment, CommentData}) ->
     {comment, lists:map(fun tree_decode_elements/1,
 	      CommentData)};
@@ -225,14 +197,6 @@ tree_decode_elements({_, {Charset, Encoding, Word}} = {encoded_word, EncodedWord
 tree_decode_elements(Rest) ->
     Rest.
 
-%%----------------------------------------------------------------------
-%% Function: try_scan_linear_whitespace/1
-%% Purpose:  Attempts to scan a linear-whitespace from passed binary.
-%%           linear-whitespace may consist of one or more SPACE, TAB or
-%%           CRLF characters.
-%% Args:     BinaryString - a binary ASCII-7 string,
-%% Returns:  {linear_whitespace, LinearWhitespace}
-%%----------------------------------------------------------------------
 try_scan_linear_whitespace(Binary) ->
     try_scan_linear_whitespace(Binary, []).
 
@@ -245,14 +209,7 @@ try_scan_linear_whitespace(Binary, Buffer) ->
 	    {{linear_whitespace, lists:reverse(Buffer)}, Binary}
     end.
 
-%%----------------------------------------------------------------------
-%% Function: try_scan_text/3
-%% Purpose:  Attempts to scan a piece of plain-text (a word) from passed binary.
-%% Args:     BinaryString - a binary ASCII-7 string,
-%%           CommentMode - see parse_input/2
-%%           InComment - are we inside a comment?
-%% Returns:  {text, Text}
-%%----------------------------------------------------------------------
+
 try_scan_text(InputBinary, Mode, InComment) ->
     try_scan_text(InputBinary, Mode, InComment, []).
 
@@ -274,15 +231,6 @@ try_scan_text(Binary = <<Char, Rest/binary>>, Mode, InComment, Accu) ->
 	_ -> try_scan_text(Rest, Mode, InComment, [Char | Accu])
     end.
 
-%%----------------------------------------------------------------------
-%% Function: try_scan_encoded_word/3
-%% Purpose:  Attempts to scan an encoded-word from passed binary.
-%% Args:     BinaryString - a binary ASCII-7 string,
-%%           CommentMode - see parse_input/2
-%%           InComment - are we inside a comment?
-%% Returns:  {{encoded_word, {Charset, Encoding, Encoded Text}}, RestOfBinary}
-%%           | atom not_found.
-%%----------------------------------------------------------------------
 try_scan_encoded_word(Binary, CommentMode, InComment) ->
     try_scan_encoded_word(Binary,
 			  CommentMode,
@@ -376,15 +324,6 @@ try_scan_encoded_word(Binary = <<Char, Rest/binary>>,
     end.
     
 
-%%----------------------------------------------------------------------
-%% Function: grab_linear_whitespace/1
-%% Purpose:  Checks if next char (or group of characters) in passed binary
-%%           form a linear-whitespace. To be used along with
-%%           grab_linear_whitespace/1.
-%% Args:     BinaryString - a binary ASCII-7 string.
-%% Returns:  true or false, depending on whether the next char is a
-%%           linear-whitespace.
-%%----------------------------------------------------------------------
 is_linear_whitespace_next(<<16#20, _/binary>>) ->
     true;
 is_linear_whitespace_next(<<$\t, _/binary>>) ->
@@ -394,20 +333,34 @@ is_linear_whitespace_next(<<13, 10, _/binary>>) ->
 is_linear_whitespace_next(_) ->
     false.
 
-%%----------------------------------------------------------------------
-%% Function: grab_linear_whitespace/1
-%% Purpose:  Extract and return a single linear-whitespace from a binary.
-%% Args:     BinaryString - a binary ASCII-7 string.
-%% Returns:  {Whitespace, Rest of binary after extracting whitespace}.
-%%           Whitespace may be list, if it contains more than 1 character
-%%           (like CLRF defined in RFC822).
-%%----------------------------------------------------------------------
 grab_linear_whitespace(<<16#20, Rest/binary>>) ->
     {16#20, Rest};
 grab_linear_whitespace(<<$\t, Rest/binary>>) ->
     {$\t, Rest};
 grab_linear_whitespace(<<13, 10, Rest/binary>>) ->
     {[13, 10], Rest}.
+
+%%----------------------------------------------------------------------
+%% Function: split_string_to_conversion_segments/1
+%% Purpose:  Splits binary ASCII-7 - encoded string to segments that
+%%           will or won't need conversions from RFC1342 encoding to
+%%           UCS.
+%% Args:     Binary - a binary ASCII-7 string.
+%% Returns:  A list of already UCS-encoded strings and tuples
+%%           {charset, encoding, string to convert} needing conversion.
+%%----------------------------------------------------------------------
+
+
+%%----------------------------------------------------------------------
+%% Function: isolate_next_convertable_substring/1
+%% Purpose:  Extracts a single fragment of text that should undergo
+%%           conversion to UCS.
+%% Args:     BinaryString - a binary ASCII-7 string.
+%% Returns:  {{charset, encoding, string}, rest of binary string} |
+%%           not_found
+%%----------------------------------------------------------------------
+%% @todo Optimize this function to use cons and list:reverse instead of
+%%       appending.
 
 %%----------------------------------------------------------------------
 %% Function: convert_string_parts_to_ucs/1
